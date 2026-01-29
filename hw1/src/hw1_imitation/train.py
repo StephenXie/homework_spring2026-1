@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-
+from tqdm import tqdm
 import numpy as np
 import torch
 import tyro
@@ -20,7 +20,7 @@ from hw1_imitation.data import (
     load_pusht_zarr,
 )
 from hw1_imitation.model import build_policy, PolicyType
-from hw1_imitation.evaluation import Logger
+from hw1_imitation.evaluation import Logger, evaluate_policy
 
 LOGDIR_PREFIX = "exp"
 
@@ -31,15 +31,16 @@ class TrainConfig:
     data_dir: Path = Path("data")
 
     # The policy type -- either MSE or flow.
-    policy_type: PolicyType = "mse"
+    policy_type: PolicyType = "flow"
     # The number of denoising steps to use for the flow policy (has no effect for the MSE policy).
-    flow_num_steps: int = 10
+    flow_num_steps: int = 20
     # The action chunk size.
     chunk_size: int = 8
 
-    batch_size: int = 128
-    lr: float = 3e-4
-    weight_decay: float = 0.0
+    batch_size: int = 256
+    lr: float = 5e-3
+    warmup_steps: int = 5000
+    weight_decay: float = 0.1
     hidden_dims: tuple[int, ...] = (256, 256, 256)
     # The number of epochs to train for.
     num_epochs: int = 400
@@ -127,8 +128,36 @@ def run_training(config: TrainConfig) -> None:
     )
     logger = Logger(log_dir)
 
-    ### TODO: PUT YOUR MAIN TRAINING LOOP HERE ###
+    model = torch.compile(model)
+    model.train()
 
+    optimizer = torch.optim.AdamW(model.parameters(), lr=config.lr, weight_decay=config.weight_decay)
+
+    total_steps = config.num_epochs * len(loader)
+    warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+        optimizer, start_factor=1e-8, end_factor=1.0, total_iters=config.warmup_steps
+    )
+    cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=total_steps - config.warmup_steps
+    )
+    scheduler = torch.optim.lr_scheduler.SequentialLR(
+        optimizer, schedulers=[warmup_scheduler, cosine_scheduler], milestones=[config.warmup_steps]
+    )
+    current_step = 0
+    for epoch in tqdm(range(config.num_epochs)):
+        for state, action_chunks in loader:
+            optimizer.zero_grad(set_to_none=True)
+            loss = model.compute_loss(state, action_chunks)
+            loss.backward()
+            optimizer.step()
+            scheduler.step()
+            current_step+=1
+            if current_step % config.log_interval == 0:
+                wandb.log({"train_loss": loss.item(), "learning_rate": optimizer.param_groups[0]["lr"]}, step=current_step)
+            if current_step % config.eval_interval == 0:
+                evaluate_policy(model, normalizer, device, config.chunk_size, config.video_size, config.num_video_episodes, config.flow_num_steps, current_step, logger)
+    
+    evaluate_policy(model, normalizer, device, config.chunk_size, config.video_size, config.num_video_episodes, config.flow_num_steps, current_step, logger)
     logger.dump_for_grading()
 
 
