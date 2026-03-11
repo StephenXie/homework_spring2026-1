@@ -106,7 +106,7 @@ class PGAgent(nn.Module):
     def _discounted_reward_to_go(self, rewards: Sequence[float]) -> Sequence[float]:
         """
         Helper function which takes a list of rewards {r_0, r_1, ..., r_t', ... r_T} and returns a list where the entry
-        in each index t' is sum_{t'=t}^T gamma^(t'-t) * r_{t'}.
+        in each index t is sum_{t'=t}^T gamma^(t'-t) * r_{t'}.
         """
         q_vals = np.zeros_like(rewards)
         running_sum = 0
