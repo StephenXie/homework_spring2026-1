@@ -52,6 +52,7 @@ def run_training_loop(logger, args):
         baseline_learning_rate=args.baseline_learning_rate,
         baseline_gradient_steps=args.baseline_gradient_steps,
         gae_lambda=args.gae_lambda,
+        n_iter=args.n_iter,
     )
 
     total_envsteps = 0
@@ -89,7 +90,7 @@ def run_training_loop(logger, args):
             # perform the logging
             for key, value in logs.items():
                 print("{} : {}".format(key, value))
-            logger.log(logs, itr)
+            logger.log(logs, total_envsteps)
             print("Done logging...\n\n", flush=True)
 
         if args.video_log_freq != -1 and itr % args.video_log_freq == 0:
@@ -100,7 +101,7 @@ def run_training_loop(logger, args):
 
             logger.log_trajs_as_videos(
                 eval_video_trajs,
-                itr,
+                total_envsteps,
                 fps=fps,
                 max_videos_to_save=MAX_NVIDEO,
                 video_title="eval_rollouts",
@@ -154,7 +155,7 @@ def main(args):
     exp_name = f"{args.env_name}_{args.exp_name}_sd{args.seed}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
     config = vars(args)
-    setup_wandb(project='cs285_hw2', name=exp_name, config=config)
+    setup_wandb(project='cs285_hw2_v2', name=exp_name, config=config)
     args.save_dir = os.path.join(logdir_prefix, exp_name)
     os.makedirs(args.save_dir, exist_ok=True)
     logger = Logger(os.path.join(args.save_dir, 'log.csv'))

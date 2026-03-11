@@ -26,6 +26,8 @@ class MLPPolicy(nn.Module):
         n_layers: int,
         layer_size: int,
         learning_rate: float,
+        n_iter: int = 200,
+        warmup_iters: int = 20,
     ):
         super().__init__()
 
@@ -52,6 +54,18 @@ class MLPPolicy(nn.Module):
         self.optimizer = optim.Adam(
             parameters,
             learning_rate,
+        )
+
+        warmup_scheduler = optim.lr_scheduler.LinearLR(
+            self.optimizer, start_factor=1e-3, total_iters=warmup_iters,
+        )
+        cosine_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+            self.optimizer, T_max=n_iter - warmup_iters,
+        )
+        self.scheduler = optim.lr_scheduler.SequentialLR(
+            self.optimizer,
+            schedulers=[warmup_scheduler, cosine_scheduler],
+            milestones=[warmup_iters],
         )
 
         self.discrete = discrete
@@ -110,7 +124,9 @@ class MLPPolicyPG(MLPPolicy):
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
+        self.scheduler.step()
 
         return {
             "Actor Loss": loss.item(),
+            "Actor LR": self.scheduler.get_last_lr()[0],
         }

@@ -24,12 +24,14 @@ class PGAgent(nn.Module):
         baseline_gradient_steps: Optional[int],
         gae_lambda: Optional[float],
         normalize_advantages: bool,
+        n_iter: int = 200,
     ):
         super().__init__()
 
         # create the actor (policy) network
         self.actor = MLPPolicyPG(
-            ac_dim, ob_dim, discrete, n_layers, layer_size, learning_rate
+            ac_dim, ob_dim, discrete, n_layers, layer_size, learning_rate,
+            n_iter=n_iter,
         )
 
         # create the critic (baseline) network, if needed
@@ -144,17 +146,14 @@ class PGAgent(nn.Module):
         Operates on flat 1D NumPy arrays.
         """
         if self.critic is None:
-            # TODO: if no baseline, then what are the advantages?
             advantages = q_values
         else:
-            # TODO: run the critic and use it as a baseline
             values = ptu.to_numpy(self.critic(ptu.from_numpy(obs)))
             assert values.shape == q_values.shape
 
             if self.gae_lambda is None:
                 advantages = q_values - values
             else:
-                # TODO: implement GAE
                 batch_size = obs.shape[0]
 
                 # HINT: append a dummy T+1 value for simpler recursive calculation
